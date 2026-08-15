@@ -194,7 +194,6 @@
          ]
       },
       "publish": {
-         "if": "startsWith(github.ref, 'refs/tags/')",
          "name": "publish",
          "needs": [
             "build_and_test"
@@ -221,12 +220,17 @@
                "run": "shasum -a 256 assets/* > sha256"
             },
             {
+               "id": "create_tag",
+               "name": "Determine release tag",
+               "run": "if [ \"${GITHUB_REF_TYPE}\" = \"tag\" ]; then\n  # Manual escape hatch: a hand-pushed *+irl* tag releases as itself.\n  echo \"release_tag=${GITHUB_REF_NAME}\" >> $GITHUB_OUTPUT\n  exit 0\nfi\nBUILD_SCM_REVISION=$(git rev-parse --short HEAD)\nBUILD_SCM_TIMESTAMP=$(TZ=UTC date --date \"@$(git show -s --format=%ct HEAD)\" +%Y%m%dT%H%M%SZ)\nRELEASE_TAG=\"${BUILD_SCM_TIMESTAMP}-${BUILD_SCM_REVISION}+irl1\"\ngit config user.email \"41898282+github-actions[bot]@users.noreply.github.com\"\ngit config user.name \"github-actions[bot]\"\ngit tag \"$RELEASE_TAG\"\ngit push origin \"$RELEASE_TAG\"\necho \"release_tag=$RELEASE_TAG\" >> $GITHUB_OUTPUT\n"
+            },
+            {
                "name": "Create GitHub release and upload artifacts",
                "uses": "softprops/action-gh-release@v2",
                "with": {
                   "files": "assets/*\nsha256\n",
                   "make_latest": true,
-                  "tag_name": "${{ github.ref_name }}"
+                  "tag_name": "${{ steps.create_tag.outputs.release_tag }}"
                }
             }
          ]
