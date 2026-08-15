@@ -150,19 +150,6 @@
                   "name": "bb_remote_asset.freebsd_amd64",
                   "path": "bb_remote_asset"
                }
-            },
-            {
-               "env": {
-                  "GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
-               },
-               "if": "matrix.host.upload",
-               "name": "Install Docker credentials",
-               "run": "echo \"${GITHUB_TOKEN}\" | docker login ghcr.io -u $ --password-stdin"
-            },
-            {
-               "if": "matrix.host.upload",
-               "name": "Push container bb_remote_asset:bb_remote_asset",
-               "run": "bazel run --stamp //cmd/bb_remote_asset:bb_remote_asset_container_push"
             }
          ],
          "strategy": {
@@ -205,6 +192,44 @@
                "run": "bazel run @org_golang_x_lint//golint -- -set_exit_status $(pwd)/..."
             }
          ]
+      },
+      "publish": {
+         "if": "startsWith(github.ref, 'refs/tags/')",
+         "name": "publish",
+         "needs": [
+            "build_and_test"
+         ],
+         "permissions": {
+            "contents": "write"
+         },
+         "runs-on": "ubuntu-latest",
+         "steps": [
+            {
+               "name": "Checkout the repository",
+               "uses": "actions/checkout@v4"
+            },
+            {
+               "name": "Download release artifacts",
+               "uses": "actions/download-artifact@v4",
+               "with": {
+                  "merge-multiple": true,
+                  "path": "assets"
+               }
+            },
+            {
+               "name": "Calculate shasum",
+               "run": "shasum -a 256 assets/* > sha256"
+            },
+            {
+               "name": "Create GitHub release and upload artifacts",
+               "uses": "softprops/action-gh-release@v2",
+               "with": {
+                  "files": "assets/*\nsha256\n",
+                  "make_latest": true,
+                  "tag_name": "${{ github.ref_name }}"
+               }
+            }
+         ]
       }
    },
    "name": "main",
@@ -212,7 +237,11 @@
       "push": {
          "branches": [
             "main"
+         ],
+         "tags": [
+            "*\\+irl*"
          ]
-      }
+      },
+      "workflow_dispatch": {}
    }
 }
