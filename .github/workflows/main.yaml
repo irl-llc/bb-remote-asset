@@ -211,9 +211,12 @@
                "name": "Download release artifacts",
                "uses": "actions/download-artifact@v4",
                "with": {
-                  "merge-multiple": true,
                   "path": "assets"
                }
+            },
+            {
+               "name": "Name each binary for its platform",
+               "run": "# Each artifact directory is named for the platform (bb_remote_asset.linux_amd64);\n# the file inside is named bb_remote_asset for every platform. Rename by\n# directory so the platforms stop colliding.\nset -eu\nmkdir flat\nfor dir in assets/*/; do\n  name=$(basename \"$dir\")\n  file=$(find \"$dir\" -type f -print -quit)\n  if [ -z \"$file\" ]; then\n    echo \"no file in artifact $name\" >&2\n    exit 1\n  fi\n  mv \"$file\" \"flat/$name\"\ndone\nrm -rf assets\nmv flat assets\nls -l assets\n"
             },
             {
                "name": "Calculate shasum",
