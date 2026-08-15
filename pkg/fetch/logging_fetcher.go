@@ -21,7 +21,7 @@ func NewLoggingFetcher(fetcher Fetcher) Fetcher {
 }
 
 func (lf *loggingFetcher) FetchBlob(ctx context.Context, req *remoteasset.FetchBlobRequest) (*remoteasset.FetchBlobResponse, error) {
-	log.Printf("Fetching Blob %s with qualifiers %s", req.Uris, req.Qualifiers)
+	log.Printf("Fetching Blob %s with qualifiers %s", req.Uris, RedactQualifiers(req.Qualifiers))
 	resp, err := lf.fetcher.FetchBlob(ctx, req)
 	if err == nil {
 		log.Printf("FetchBlob completed for %s with status code %d", req.Uris, resp.Status.GetCode())
@@ -32,7 +32,7 @@ func (lf *loggingFetcher) FetchBlob(ctx context.Context, req *remoteasset.FetchB
 }
 
 func (lf *loggingFetcher) FetchDirectory(ctx context.Context, req *remoteasset.FetchDirectoryRequest) (*remoteasset.FetchDirectoryResponse, error) {
-	log.Printf("Fetching Directory %s with qualifiers %s", req.Uris, req.Qualifiers)
+	log.Printf("Fetching Directory %s with qualifiers %s", req.Uris, RedactQualifiers(req.Qualifiers))
 	resp, err := lf.fetcher.FetchDirectory(ctx, req)
 	if err == nil {
 		log.Printf("FetchBlob completed for %s with status code %d", req.Uris, resp.Status.GetCode())
