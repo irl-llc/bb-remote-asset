@@ -11,6 +11,7 @@ go_library(
         "http_fetcher.go",
         "logging_fetcher.go",
         "metrics_fetcher.go",
+        "qualifier_redaction.go",
         "remote_execution_fetcher.go",
         "utils.go",
         "validating_fetcher.go",
@@ -47,6 +48,7 @@ go_test(
         "authorizing_fetcher_test.go",
         "caching_fetcher_test.go",
         "http_fetcher_test.go",
+        "logging_fetcher_test.go",
         "validating_fetcher_test.go",
     ],
     deps = [
