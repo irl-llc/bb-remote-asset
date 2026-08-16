@@ -88,8 +88,10 @@ func (hf *httpFetcher) FetchBlob(ctx context.Context, req *remoteasset.FetchBlob
 		return nil, err
 	}
 
+	rangeHeader := cacheKeyRangeHeader(req.Qualifiers)
+
 	for _, uri := range req.Uris {
-		buffer, digest, checksum := hf.downloadBlob(ctx, uri, digestFunction, checksumFunction, expectedDigest, auth)
+		buffer, digest, checksum := hf.downloadBlob(ctx, uri, digestFunction, checksumFunction, expectedDigest, auth, rangeHeader)
 		if _, err = buffer.GetSizeBytes(); err != nil {
 			log.Printf("Error downloading blob with URI %s: %v", uri, err)
 			continue
@@ -130,7 +132,7 @@ func (hf *httpFetcher) CheckQualifiers(qualifiers qualifier.Set) qualifier.Set {
 }
 
 // downloadBlob performs the actual blob download, yielding a buffer of the content, its Digest, and checksum.
-func (hf *httpFetcher) downloadBlob(ctx context.Context, uri string, digestFunction, checksumFunction bb_digest.Function, expectedDigest string, auth *AuthHeaders) (buffer.Buffer, bb_digest.Digest, string) {
+func (hf *httpFetcher) downloadBlob(ctx context.Context, uri string, digestFunction, checksumFunction bb_digest.Function, expectedDigest string, auth *AuthHeaders, rangeHeader string) (buffer.Buffer, bb_digest.Digest, string) {
 	// Generate the HTTP Request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, uri, nil)
 	if err != nil {
@@ -146,15 +148,16 @@ func (hf *httpFetcher) downloadBlob(ctx context.Context, uri string, digestFunct
 		log.Printf("Error downloading blob with URI %s: %v", uri, err)
 		return buffer.NewBufferFromError(util.StatusWrapWithCode(err, codes.Internal, "HTTP request failed")), bb_digest.BadDigest, ""
 	}
-	if resp.StatusCode != http.StatusOK {
-		log.Printf("Error downloading blob with URI %s: %v", uri, resp.StatusCode)
-		return buffer.NewBufferFromError(status.Errorf(codes.Internal, "HTTP request failed with status %#v", resp.Status)), bb_digest.BadDigest, ""
-	}
 	defer func() {
 		if resp.Body != nil {
 			_ = resp.Body.Close()
 		}
 	}()
+	expectedSizeBytes, err := checkResponse(rangeHeader, resp)
+	if err != nil {
+		log.Printf("Error downloading blob with URI %s: %v", uri, err)
+		return buffer.NewBufferFromError(err), bb_digest.BadDigest, ""
+	}
 
 	tempFileHandle, err := os.CreateTemp("", "bb-remote-asset-*")
 	if err != nil {
@@ -187,6 +190,9 @@ func (hf *httpFetcher) downloadBlob(ctx context.Context, uri string, digestFunct
 	}
 	resp.Body = nil
 	digest := hasher.Sum()
+	if expectedSizeBytes >= 0 && digest.GetSizeBytes() != expectedSizeBytes {
+		return buffer.NewBufferFromError(status.Errorf(codes.Internal, "Origin served %d bytes for a range it said was %d bytes long", digest.GetSizeBytes(), expectedSizeBytes)), bb_digest.BadDigest, ""
+	}
 	checksum := ""
 	if expectedDigest != "" {
 		checksum = checksumGenerator.Sum().GetProto().GetHash()

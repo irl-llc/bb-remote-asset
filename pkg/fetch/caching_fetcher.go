@@ -134,6 +134,13 @@ func getAndCheckAsset(
 	return assetData, nil
 }
 
+// removeVolatileQualifiers returns the qualifiers that key an asset,
+// dropping the ones that do not.
+//
+// Beyond keying, cacheKeyRangeHeader reads this to find the byte range an
+// asset is stored under, which is the range a ranged HTTP response has to
+// agree with to be cacheable at all. Widening what is dropped here widens
+// what a fetcher may store under a key that does not mention it.
 func removeVolatileQualifiers(qualifiers []*remoteasset.Qualifier) []*remoteasset.Qualifier {
 	// Remove qualifiers that are volatile, like auth headers which may change frequently.
 	var stableQualifiers []*remoteasset.Qualifier
