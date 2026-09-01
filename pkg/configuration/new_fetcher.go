@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/buildbarn/bb-remote-asset/pkg/fetch"
 	pb "github.com/buildbarn/bb-remote-asset/pkg/proto/configuration/bb_remote_asset/fetch"
@@ -12,6 +13,7 @@ import (
 	"github.com/buildbarn/bb-storage/pkg/grpc"
 	bb_http "github.com/buildbarn/bb-storage/pkg/http/client"
 	"github.com/buildbarn/bb-storage/pkg/program"
+	"github.com/buildbarn/bb-storage/pkg/util"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -56,7 +58,14 @@ func NewFetcherFromConfiguration(configuration *pb.FetcherConfiguration,
 		}
 	}
 	if assetStore != nil {
-		fetcher = fetch.NewCachingFetcher(fetcher, assetStore)
+		maximumStaleness := time.Duration(0)
+		if d := configuration.GetMaximumCachedAssetStaleness(); d != nil {
+			if err := d.CheckValid(); err != nil {
+				return nil, util.StatusWrap(err, "Invalid maximum cached asset staleness")
+			}
+			maximumStaleness = d.AsDuration()
+		}
+		fetcher = fetch.NewCachingFetcher(fetcher, assetStore, maximumStaleness)
 	}
 	return fetch.NewAuthorizingFetcher(
 		fetch.NewMetricsFetcher(

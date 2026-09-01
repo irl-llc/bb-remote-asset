@@ -20,16 +20,24 @@ import (
 )
 
 type cachingFetcher struct {
-	fetcher    Fetcher
-	assetStore storage.AssetStore
+	fetcher          Fetcher
+	assetStore       storage.AssetStore
+	maximumStaleness time.Duration
 }
 
 // NewCachingFetcher creates a decorator for remoteasset.FetchServer implementations to avoid having to fetch the
 // blob remotely multiple times
-func NewCachingFetcher(fetcher Fetcher, assetStore storage.AssetStore) Fetcher {
+//
+// maximumStaleness relaxes FetchBlobRequest.oldest_content_accepted: a stored
+// asset younger than it is served even when the request asks for newer
+// content. Zero honours the request exactly. See the
+// maximum_cached_asset_staleness field in fetcher.proto for what that trades
+// away and why a client would want it.
+func NewCachingFetcher(fetcher Fetcher, assetStore storage.AssetStore, maximumStaleness time.Duration) Fetcher {
 	return &cachingFetcher{
-		fetcher:    fetcher,
-		assetStore: assetStore,
+		fetcher:          fetcher,
+		assetStore:       assetStore,
+		maximumStaleness: maximumStaleness,
 	}
 }
 
@@ -51,7 +59,7 @@ func (cf *cachingFetcher) FetchBlob(ctx context.Context, req *remoteasset.FetchB
 
 	// Check assetStore
 	for _, uri := range req.Uris {
-		assetData, err := getAndCheckAsset(ctx, cf.assetStore, uri, removeVolatileQualifiers(req.Qualifiers), digestFunction, oldestContentAccepted)
+		assetData, err := getAndCheckAsset(ctx, cf.assetStore, uri, removeVolatileQualifiers(req.Qualifiers), digestFunction, oldestContentAccepted, cf.maximumStaleness)
 		if err != nil {
 			allCachingErrors = append(allCachingErrors, err)
 			continue
@@ -108,6 +116,7 @@ func getAndCheckAsset(
 	qualifiers []*remoteasset.Qualifier,
 	digestFunction digest.Function,
 	oldestContentAccepted time.Time,
+	maximumStaleness time.Duration,
 ) (*asset.Asset, error) {
 	assetRef := storage.NewAssetReference([]string{uri}, qualifiers)
 	assetData, err := assetStore.Get(ctx, assetRef, digestFunction)
@@ -123,11 +132,23 @@ func getAndCheckAsset(
 		}
 	}
 
-	// Check that content is newer than the oldest accepted by the request
+	// Check that content is newer than the oldest accepted by the request,
+	// after allowing maximumStaleness to relax that bound.
+	//
+	// The relaxation only ever LOWERS the bound: a request whose own
+	// oldest_content_accepted is already older than the staleness window keeps
+	// its own, laxer, answer. That is what makes this safe to enable
+	// server-wide rather than per client.
 	if oldestContentAccepted != time.Unix(0, 0) {
+		bound := oldestContentAccepted
+		if maximumStaleness > 0 {
+			if floor := time.Now().Add(-maximumStaleness); floor.Before(bound) {
+				bound = floor
+			}
+		}
 		updateTime := assetData.LastUpdated.AsTime()
-		if updateTime.Before(oldestContentAccepted) {
-			return nil, fmt.Errorf("Asset older than %v", oldestContentAccepted)
+		if updateTime.Before(bound) {
+			return nil, fmt.Errorf("Asset older than %v", bound)
 		}
 	}
 
@@ -171,7 +192,7 @@ func (cf *cachingFetcher) FetchDirectory(ctx context.Context, req *remoteasset.F
 
 	// Check refStore
 	for _, uri := range req.Uris {
-		assetData, err := getAndCheckAsset(ctx, cf.assetStore, uri, removeVolatileQualifiers(req.Qualifiers), digestFunction, oldestContentAccepted)
+		assetData, err := getAndCheckAsset(ctx, cf.assetStore, uri, removeVolatileQualifiers(req.Qualifiers), digestFunction, oldestContentAccepted, cf.maximumStaleness)
 		if err != nil {
 			allCachingErrors = append(allCachingErrors, err)
 			continue

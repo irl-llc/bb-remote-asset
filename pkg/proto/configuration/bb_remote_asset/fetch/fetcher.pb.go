@@ -12,6 +12,7 @@ import (
 	status "google.golang.org/genproto/googleapis/rpc/status"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	durationpb "google.golang.org/protobuf/types/known/durationpb"
 	reflect "reflect"
 	sync "sync"
 	unsafe "unsafe"
@@ -31,9 +32,10 @@ type FetcherConfiguration struct {
 	//	*FetcherConfiguration_Http
 	//	*FetcherConfiguration_Error
 	//	*FetcherConfiguration_RemoteExecution
-	Backend       isFetcherConfiguration_Backend `protobuf_oneof:"backend"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Backend                     isFetcherConfiguration_Backend `protobuf_oneof:"backend"`
+	MaximumCachedAssetStaleness *durationpb.Duration           `protobuf:"bytes,5,opt,name=maximum_cached_asset_staleness,json=maximumCachedAssetStaleness,proto3" json:"maximum_cached_asset_staleness,omitempty"`
+	unknownFields               protoimpl.UnknownFields
+	sizeCache                   protoimpl.SizeCache
 }
 
 func (x *FetcherConfiguration) Reset() {
@@ -96,6 +98,13 @@ func (x *FetcherConfiguration) GetRemoteExecution() *FetcherConfiguration_Remote
 		if x, ok := x.Backend.(*FetcherConfiguration_RemoteExecution); ok {
 			return x.RemoteExecution
 		}
+	}
+	return nil
+}
+
+func (x *FetcherConfiguration) GetMaximumCachedAssetStaleness() *durationpb.Duration {
+	if x != nil {
+		return x.MaximumCachedAssetStaleness
 	}
 	return nil
 }
@@ -214,11 +223,12 @@ var File_github_com_buildbarn_bb_remote_asset_pkg_proto_configuration_bb_remote_
 
 const file_github_com_buildbarn_bb_remote_asset_pkg_proto_configuration_bb_remote_asset_fetch_fetcher_proto_rawDesc = "" +
 	"\n" +
-	"`github.com/buildbarn/bb-remote-asset/pkg/proto/configuration/bb_remote_asset/fetch/fetcher.proto\x12-buildbarn.configuration.bb_remote_asset.fetch\x1a\x17google/rpc/status.proto\x1aGgithub.com/buildbarn/bb-storage/pkg/proto/configuration/grpc/grpc.proto\x1aPgithub.com/buildbarn/bb-storage/pkg/proto/configuration/http/client/client.proto\"\xd8\x04\n" +
+	"`github.com/buildbarn/bb-remote-asset/pkg/proto/configuration/bb_remote_asset/fetch/fetcher.proto\x12-buildbarn.configuration.bb_remote_asset.fetch\x1a\x1egoogle/protobuf/duration.proto\x1a\x17google/rpc/status.proto\x1aGgithub.com/buildbarn/bb-storage/pkg/proto/configuration/grpc/grpc.proto\x1aPgithub.com/buildbarn/bb-storage/pkg/proto/configuration/http/client/client.proto\"\xb8\x05\n" +
 	"\x14FetcherConfiguration\x12r\n" +
 	"\x04http\x18\x02 \x01(\v2\\.buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.HttpFetcherConfigurationH\x00R\x04http\x12*\n" +
 	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusH\x00R\x05error\x12\x94\x01\n" +
-	"\x10remote_execution\x18\x04 \x01(\v2g.buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfigurationH\x00R\x0fremoteExecution\x1ar\n" +
+	"\x10remote_execution\x18\x04 \x01(\v2g.buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfigurationH\x00R\x0fremoteExecution\x12^\n" +
+	"\x1emaximum_cached_asset_staleness\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x1bmaximumCachedAssetStaleness\x1ar\n" +
 	"\x18HttpFetcherConfiguration\x12J\n" +
 	"\x06client\x18\x03 \x01(\v22.buildbarn.configuration.http.client.ConfigurationR\x06clientJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03\x1a\x83\x01\n" +
 	"#RemoteExecutionFetcherConfiguration\x12\\\n" +
@@ -243,20 +253,22 @@ var file_github_com_buildbarn_bb_remote_asset_pkg_proto_configuration_bb_remote_
 	(*FetcherConfiguration_HttpFetcherConfiguration)(nil),            // 1: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.HttpFetcherConfiguration
 	(*FetcherConfiguration_RemoteExecutionFetcherConfiguration)(nil), // 2: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfiguration
 	(*status.Status)(nil),                                            // 3: google.rpc.Status
-	(*client.Configuration)(nil),                                     // 4: buildbarn.configuration.http.client.Configuration
-	(*grpc.ClientConfiguration)(nil),                                 // 5: buildbarn.configuration.grpc.ClientConfiguration
+	(*durationpb.Duration)(nil),                                      // 4: google.protobuf.Duration
+	(*client.Configuration)(nil),                                     // 5: buildbarn.configuration.http.client.Configuration
+	(*grpc.ClientConfiguration)(nil),                                 // 6: buildbarn.configuration.grpc.ClientConfiguration
 }
 var file_github_com_buildbarn_bb_remote_asset_pkg_proto_configuration_bb_remote_asset_fetch_fetcher_proto_depIdxs = []int32{
 	1, // 0: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.http:type_name -> buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.HttpFetcherConfiguration
 	3, // 1: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.error:type_name -> google.rpc.Status
 	2, // 2: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.remote_execution:type_name -> buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfiguration
-	4, // 3: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.HttpFetcherConfiguration.client:type_name -> buildbarn.configuration.http.client.Configuration
-	5, // 4: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfiguration.execution_client:type_name -> buildbarn.configuration.grpc.ClientConfiguration
-	5, // [5:5] is the sub-list for method output_type
-	5, // [5:5] is the sub-list for method input_type
-	5, // [5:5] is the sub-list for extension type_name
-	5, // [5:5] is the sub-list for extension extendee
-	0, // [0:5] is the sub-list for field type_name
+	4, // 3: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.maximum_cached_asset_staleness:type_name -> google.protobuf.Duration
+	5, // 4: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.HttpFetcherConfiguration.client:type_name -> buildbarn.configuration.http.client.Configuration
+	6, // 5: buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfiguration.execution_client:type_name -> buildbarn.configuration.grpc.ClientConfiguration
+	6, // [6:6] is the sub-list for method output_type
+	6, // [6:6] is the sub-list for method input_type
+	6, // [6:6] is the sub-list for extension type_name
+	6, // [6:6] is the sub-list for extension extendee
+	0, // [0:6] is the sub-list for field type_name
 }
 
 func init() {

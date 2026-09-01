@@ -45,7 +45,7 @@ func TestFetchBlobCaching(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
 
 	t.Run("Success", func(t *testing.T) {
 		backendGetCall := backend.EXPECT().Get(ctx, refDigest).Return(buffer.NewBufferFromError(status.Error(codes.NotFound, "Blob not found")))
@@ -103,7 +103,7 @@ func TestFetchDirectoryCaching(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
 
 	t.Run("Success", func(t *testing.T) {
 		backendGetCall := backend.EXPECT().Get(ctx, refDigest).Return(buffer.NewBufferFromError(status.Error(codes.NotFound, "Directory not found")))
@@ -172,7 +172,7 @@ func TestCachingFetcherExpiry(t *testing.T) {
 		Code:    5,
 		Message: "Not found",
 	})
-	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore)
+	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore, 0)
 
 	_, err = cacheFetcher.FetchBlob(ctx, request)
 
@@ -215,7 +215,7 @@ func TestCachingFetcherOldestContentAccepted(t *testing.T) {
 		Code:    5,
 		Message: "Not found",
 	})
-	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore)
+	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore, 0)
 
 	_, err = cacheFetcher.FetchBlob(ctx, request)
 	errAsStatus := status.Convert(err)
@@ -256,7 +256,7 @@ func TestFetchBlobVolatileQualifiersIgnored(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
 
 	// 1st fetch is a cache miss, and we'll record the digest used.
 	var firstDigest bb_digest.Digest
@@ -360,7 +360,7 @@ func TestFetchDirectoryVolatileQualifiersIgnored(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
 
 	// 1st fetch is a cache miss, and we'll record the digest used.
 	var firstDigest bb_digest.Digest
@@ -430,4 +430,113 @@ func TestFetchDirectoryVolatileQualifiersIgnored(t *testing.T) {
 		})
 	_, err = cachingFetcher.FetchDirectory(ctx, req3)
 	require.NoError(t, err)
+}
+
+// The staleness window exists because of one line in Bazel's
+// GrpcRemoteDownloader: a download with no checksum gets an
+// oldest_content_accepted one hour in the FUTURE, under the comment "If no
+// checksum is provided, never accept cached content". Every case below uses
+// that exact bound, because it is the only one that matters in practice.
+func TestFetchBlobMaximumStaleness(t *testing.T) {
+	ctrl, ctx := gomock.WithContext(context.Background(), t)
+
+	instanceName, err := bb_digest.NewInstanceName("")
+	require.NoError(t, err)
+	digestFunction, err := instanceName.GetDigestFunction(remoteexecution.DigestFunction_SHA256, 0)
+	require.NoError(t, err)
+
+	uri := "www.example.com"
+	blobDigest := &remoteexecution.Digest{Hash: "d0d829c4c0ce64787cb1c998a9c29a109f8ed005633132fda4f29982487b04db", SizeBytes: 123}
+	_, refDigest, err := storage.ProtoSerialise(storage.NewAssetReference([]string{uri}, []*remoteasset.Qualifier{}), digestFunction)
+	require.NoError(t, err)
+
+	// What Bazel sends for an unchecksummed download.
+	bazelBound := timestamppb.New(time.Now().Add(time.Hour))
+	requestWithBound := &remoteasset.FetchBlobRequest{
+		InstanceName:          "",
+		Uris:                  []string{uri},
+		OldestContentAccepted: bazelBound,
+	}
+
+	storedAsset := func(age time.Duration) *asset.Asset {
+		return &asset.Asset{
+			Digest:      blobDigest,
+			LastUpdated: timestamppb.New(time.Now().Add(-age)),
+			Type:        asset.Asset_BLOB,
+		}
+	}
+
+	t.Run("WithinWindowIsServed", func(t *testing.T) {
+		backend := mock.NewMockBlobAccess(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour)
+		backend.EXPECT().Get(ctx, refDigest).Return(
+			buffer.NewProtoBufferFromProto(storedAsset(10*time.Minute), buffer.UserProvided))
+
+		response, err := cachingFetcher.FetchBlob(ctx, requestWithBound)
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+		require.True(t, proto.Equal(blobDigest, response.BlobDigest))
+	})
+
+	// The window is a bound, not a switch: past it the asset is refetched from
+	// the origin, which is what keeps "stale" bounded rather than unlimited.
+	t.Run("OlderThanWindowIsRefetched", func(t *testing.T) {
+		backend := mock.NewMockBlobAccess(ctrl)
+		mockFetcher := mock.NewMockFetcher(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour)
+		getCall := backend.EXPECT().Get(ctx, refDigest).Return(
+			buffer.NewProtoBufferFromProto(storedAsset(48*time.Hour), buffer.UserProvided))
+		mockFetcher.EXPECT().FetchBlob(ctx, requestWithBound).Return(&remoteasset.FetchBlobResponse{
+			Status:     status.New(codes.OK, "Success!").Proto(),
+			Uri:        uri,
+			BlobDigest: blobDigest,
+		}, nil).After(getCall)
+		backend.EXPECT().Put(ctx, refDigest, gomock.Any()).Return(nil)
+
+		response, err := cachingFetcher.FetchBlob(ctx, requestWithBound)
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+	})
+
+	// Unset means unchanged: this is the case every existing deployment runs,
+	// and it must still refuse an asset stored seconds ago.
+	t.Run("ZeroWindowStillRefusesAFreshAsset", func(t *testing.T) {
+		backend := mock.NewMockBlobAccess(ctrl)
+		mockFetcher := mock.NewMockFetcher(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 0)
+		getCall := backend.EXPECT().Get(ctx, refDigest).Return(
+			buffer.NewProtoBufferFromProto(storedAsset(time.Second), buffer.UserProvided))
+		mockFetcher.EXPECT().FetchBlob(ctx, requestWithBound).Return(&remoteasset.FetchBlobResponse{
+			Status:     status.New(codes.OK, "Success!").Proto(),
+			Uri:        uri,
+			BlobDigest: blobDigest,
+		}, nil).After(getCall)
+		backend.EXPECT().Put(ctx, refDigest, gomock.Any()).Return(nil)
+
+		response, err := cachingFetcher.FetchBlob(ctx, requestWithBound)
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+	})
+
+	// The relaxation only ever lowers the bound. A client that asked for
+	// something older than the window keeps its own answer, so enabling this
+	// server-wide cannot tighten anybody's freshness.
+	t.Run("ARequestLaxerThanTheWindowKeepsItsOwnBound", func(t *testing.T) {
+		backend := mock.NewMockBlobAccess(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour)
+		backend.EXPECT().Get(ctx, refDigest).Return(
+			buffer.NewProtoBufferFromProto(storedAsset(48*time.Hour), buffer.UserProvided))
+
+		response, err := cachingFetcher.FetchBlob(ctx, &remoteasset.FetchBlobRequest{
+			InstanceName:          "",
+			Uris:                  []string{uri},
+			OldestContentAccepted: timestamppb.New(time.Now().Add(-72 * time.Hour)),
+		})
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+	})
 }

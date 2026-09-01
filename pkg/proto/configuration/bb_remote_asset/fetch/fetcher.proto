@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package buildbarn.configuration.bb_remote_asset.fetch;
 
+import "google/protobuf/duration.proto";
 import "google/rpc/status.proto";
 import "github.com/buildbarn/bb-storage/pkg/proto/configuration/grpc/grpc.proto";
 import "github.com/buildbarn/bb-storage/pkg/proto/configuration/http/client/client.proto";
@@ -37,6 +38,27 @@ message FetcherConfiguration {
     // support this fetcher.
     RemoteExecutionFetcherConfiguration remote_execution = 4;
   }
+
+  // Optional: serve a cached asset that is up to this old even when a
+  // FetchBlobRequest's oldest_content_accepted asks for newer content.
+  //
+  // Bazel sets oldest_content_accepted to one hour in the FUTURE on every
+  // download that carries no checksum, under the comment "If no checksum is
+  // provided, never accept cached content". No asset a server has already
+  // stored can satisfy that, so an unchecksummed download reaches its origin
+  // on every cold repository cache and fails outright while that origin is
+  // down. Bazel has no flag to turn this off.
+  //
+  // Setting this trades that guarantee for a bounded staleness window: the
+  // freshness check becomes min(oldest_content_accepted, now - this), so an
+  // asset stored inside the window is served, an older one is still
+  // refetched, and a client asking for something LAXER than the window still
+  // gets exactly what it asked for. A URL whose content changes upstream
+  // inside the window is served stale. That is the whole of the
+  // trade, and is why this is opt-in.
+  //
+  // Leave unset to honour oldest_content_accepted exactly.
+  google.protobuf.Duration maximum_cached_asset_staleness = 5;
 
   message HttpFetcherConfiguration {
     // Formerly used to specify CAS

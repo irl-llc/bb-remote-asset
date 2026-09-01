@@ -11,6 +11,7 @@ proto_library(
         "@com_github_buildbarn_bb_storage//pkg/proto/configuration/grpc:grpc_proto",
         "@com_github_buildbarn_bb_storage//pkg/proto/configuration/http/client:client_proto",
         "@googleapis//google/rpc:status_proto",
+        "@protobuf//:duration_proto",
     ],
 )
 
