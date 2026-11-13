@@ -1,4 +1,4 @@
-load("@rules_go//go:def.bzl", "go_library")
+load("@rules_go//go:def.bzl", "go_library", "go_test")
 
 go_library(
     name = "configuration",
@@ -22,6 +22,17 @@ go_library(
         "@com_github_buildbarn_bb_storage//pkg/http/client",
         "@com_github_buildbarn_bb_storage//pkg/program",
         "@com_github_buildbarn_bb_storage//pkg/util",
+        "@org_golang_google_grpc//codes",
+        "@org_golang_google_grpc//status",
+    ],
+)
+
+go_test(
+    name = "configuration_test",
+    srcs = ["new_fetcher_test.go"],
+    embed = [":configuration"],
+    deps = [
+        "@com_github_stretchr_testify//require",
         "@org_golang_google_grpc//codes",
         "@org_golang_google_grpc//status",
     ],

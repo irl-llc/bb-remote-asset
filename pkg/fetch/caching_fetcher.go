@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +24,24 @@ type cachingFetcher struct {
 	fetcher          Fetcher
 	assetStore       storage.AssetStore
 	maximumStaleness time.Duration
+	originOnlyURIs   []*regexp.Regexp
+}
+
+// DefaultOriginOnlyURIRegexes match the token endpoints of container
+// registries: quay.io's /v2/auth; the /token or /v2/token of Docker Hub
+// (auth.docker.io), ghcr.io, public.ecr.aws, cgr.dev, Azure (oauth2/token)
+// and Forgejo or Gitea; GitLab's /jwt/auth; nvcr.io's /proxy_auth; and
+// docker-auth.elastic.co/auth. Each is anchored to the path, so a query
+// string that mentions /token does not match.
+//
+// A token from one of these expires within minutes and carries no checksum,
+// so a cached copy is only ever a dead credential. See the
+// origin_only_uri_regexes field in fetcher.proto.
+var DefaultOriginOnlyURIRegexes = []string{
+	`^[^?#]*/v2/auth([?#]|$)`,
+	`^[^?#]*/token([?#]|$)`,
+	`^[^?#]*/(jwt/auth|proxy_auth)([?#]|$)`,
+	`^https?://docker-auth\.elastic\.co/auth([?#]|$)`,
 }
 
 // NewCachingFetcher creates a decorator for remoteasset.FetchServer implementations to avoid having to fetch the
@@ -33,12 +52,31 @@ type cachingFetcher struct {
 // content. Zero honours the request exactly. See the
 // maximum_cached_asset_staleness field in fetcher.proto for what that trades
 // away and why a client would want it.
-func NewCachingFetcher(fetcher Fetcher, assetStore storage.AssetStore, maximumStaleness time.Duration) Fetcher {
+//
+// A request any of whose URIs matches one of originOnlyURIs bypasses the
+// asset store entirely: it is neither served from it nor written to it.
+func NewCachingFetcher(fetcher Fetcher, assetStore storage.AssetStore, maximumStaleness time.Duration, originOnlyURIs []*regexp.Regexp) Fetcher {
 	return &cachingFetcher{
 		fetcher:          fetcher,
 		assetStore:       assetStore,
 		maximumStaleness: maximumStaleness,
+		originOnlyURIs:   originOnlyURIs,
 	}
+}
+
+// isOriginOnly reports whether any URI of a request matches originOnlyURIs.
+// One match is enough: the URIs of a request are alternatives for the same
+// content, so a request that names a token endpoint at all is a token
+// request.
+func (cf *cachingFetcher) isOriginOnly(uris []string) bool {
+	for _, uri := range uris {
+		for _, re := range cf.originOnlyURIs {
+			if re.MatchString(uri) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (cf *cachingFetcher) FetchBlob(ctx context.Context, req *remoteasset.FetchBlobRequest) (*remoteasset.FetchBlobResponse, error) {
@@ -53,6 +91,10 @@ func (cf *cachingFetcher) FetchBlob(ctx context.Context, req *remoteasset.FetchB
 			return nil, err
 		}
 		oldestContentAccepted = req.OldestContentAccepted.AsTime()
+	}
+
+	if cf.isOriginOnly(req.Uris) {
+		return cf.fetcher.FetchBlob(ctx, req)
 	}
 
 	allCachingErrors := []error{}
@@ -186,6 +228,10 @@ func (cf *cachingFetcher) FetchDirectory(ctx context.Context, req *remoteasset.F
 	oldestContentAccepted := time.Unix(0, 0)
 	if req.OldestContentAccepted != nil {
 		oldestContentAccepted = req.OldestContentAccepted.AsTime()
+	}
+
+	if cf.isOriginOnly(req.Uris) {
+		return cf.fetcher.FetchDirectory(ctx, req)
 	}
 
 	allCachingErrors := []error{}

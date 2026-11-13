@@ -34,6 +34,7 @@ type FetcherConfiguration struct {
 	//	*FetcherConfiguration_RemoteExecution
 	Backend                     isFetcherConfiguration_Backend `protobuf_oneof:"backend"`
 	MaximumCachedAssetStaleness *durationpb.Duration           `protobuf:"bytes,5,opt,name=maximum_cached_asset_staleness,json=maximumCachedAssetStaleness,proto3" json:"maximum_cached_asset_staleness,omitempty"`
+	OriginOnlyUriRegexes        []string                       `protobuf:"bytes,6,rep,name=origin_only_uri_regexes,json=originOnlyUriRegexes,proto3" json:"origin_only_uri_regexes,omitempty"`
 	unknownFields               protoimpl.UnknownFields
 	sizeCache                   protoimpl.SizeCache
 }
@@ -105,6 +106,13 @@ func (x *FetcherConfiguration) GetRemoteExecution() *FetcherConfiguration_Remote
 func (x *FetcherConfiguration) GetMaximumCachedAssetStaleness() *durationpb.Duration {
 	if x != nil {
 		return x.MaximumCachedAssetStaleness
+	}
+	return nil
+}
+
+func (x *FetcherConfiguration) GetOriginOnlyUriRegexes() []string {
+	if x != nil {
+		return x.OriginOnlyUriRegexes
 	}
 	return nil
 }
@@ -223,12 +231,13 @@ var File_github_com_buildbarn_bb_remote_asset_pkg_proto_configuration_bb_remote_
 
 const file_github_com_buildbarn_bb_remote_asset_pkg_proto_configuration_bb_remote_asset_fetch_fetcher_proto_rawDesc = "" +
 	"\n" +
-	"`github.com/buildbarn/bb-remote-asset/pkg/proto/configuration/bb_remote_asset/fetch/fetcher.proto\x12-buildbarn.configuration.bb_remote_asset.fetch\x1a\x1egoogle/protobuf/duration.proto\x1a\x17google/rpc/status.proto\x1aGgithub.com/buildbarn/bb-storage/pkg/proto/configuration/grpc/grpc.proto\x1aPgithub.com/buildbarn/bb-storage/pkg/proto/configuration/http/client/client.proto\"\xb8\x05\n" +
+	"`github.com/buildbarn/bb-remote-asset/pkg/proto/configuration/bb_remote_asset/fetch/fetcher.proto\x12-buildbarn.configuration.bb_remote_asset.fetch\x1a\x1egoogle/protobuf/duration.proto\x1a\x17google/rpc/status.proto\x1aGgithub.com/buildbarn/bb-storage/pkg/proto/configuration/grpc/grpc.proto\x1aPgithub.com/buildbarn/bb-storage/pkg/proto/configuration/http/client/client.proto\"\xef\x05\n" +
 	"\x14FetcherConfiguration\x12r\n" +
 	"\x04http\x18\x02 \x01(\v2\\.buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.HttpFetcherConfigurationH\x00R\x04http\x12*\n" +
 	"\x05error\x18\x03 \x01(\v2\x12.google.rpc.StatusH\x00R\x05error\x12\x94\x01\n" +
 	"\x10remote_execution\x18\x04 \x01(\v2g.buildbarn.configuration.bb_remote_asset.fetch.FetcherConfiguration.RemoteExecutionFetcherConfigurationH\x00R\x0fremoteExecution\x12^\n" +
-	"\x1emaximum_cached_asset_staleness\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x1bmaximumCachedAssetStaleness\x1ar\n" +
+	"\x1emaximum_cached_asset_staleness\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\x1bmaximumCachedAssetStaleness\x125\n" +
+	"\x17origin_only_uri_regexes\x18\x06 \x03(\tR\x14originOnlyUriRegexes\x1ar\n" +
 	"\x18HttpFetcherConfiguration\x12J\n" +
 	"\x06client\x18\x03 \x01(\v22.buildbarn.configuration.http.client.ConfigurationR\x06clientJ\x04\b\x01\x10\x02J\x04\b\x02\x10\x03\x1a\x83\x01\n" +
 	"#RemoteExecutionFetcherConfiguration\x12\\\n" +

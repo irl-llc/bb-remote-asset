@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"net/http"
+	"regexp"
 	"time"
 
 	"github.com/buildbarn/bb-remote-asset/pkg/fetch"
@@ -65,7 +66,11 @@ func NewFetcherFromConfiguration(configuration *pb.FetcherConfiguration,
 			}
 			maximumStaleness = d.AsDuration()
 		}
-		fetcher = fetch.NewCachingFetcher(fetcher, assetStore, maximumStaleness)
+		originOnlyURIs, err := compileOriginOnlyURIRegexes(configuration.GetOriginOnlyUriRegexes())
+		if err != nil {
+			return nil, err
+		}
+		fetcher = fetch.NewCachingFetcher(fetcher, assetStore, maximumStaleness, originOnlyURIs)
 	}
 	return fetch.NewAuthorizingFetcher(
 		fetch.NewMetricsFetcher(
@@ -77,4 +82,22 @@ func NewFetcherFromConfiguration(configuration *pb.FetcherConfiguration,
 		),
 		authorizer,
 	), nil
+}
+
+// compileOriginOnlyURIRegexes compiles the configured origin-only URI
+// patterns, falling back to fetch.DefaultOriginOnlyURIRegexes when none are
+// configured.
+func compileOriginOnlyURIRegexes(patterns []string) ([]*regexp.Regexp, error) {
+	if len(patterns) == 0 {
+		patterns = fetch.DefaultOriginOnlyURIRegexes
+	}
+	compiled := make([]*regexp.Regexp, 0, len(patterns))
+	for _, pattern := range patterns {
+		re, err := regexp.Compile(pattern)
+		if err != nil {
+			return nil, util.StatusWrapfWithCode(err, codes.InvalidArgument, "Invalid origin-only URI regex %#v", pattern)
+		}
+		compiled = append(compiled, re)
+	}
+	return compiled, nil
 }

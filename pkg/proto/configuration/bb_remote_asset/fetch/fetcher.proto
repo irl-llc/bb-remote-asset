@@ -60,6 +60,30 @@ message FetcherConfiguration {
   // Leave unset to honour oldest_content_accepted exactly.
   google.protobuf.Duration maximum_cached_asset_staleness = 5;
 
+  // Optional: RE2 regular expressions, matched against each URI of a
+  // FetchBlobRequest or FetchDirectoryRequest. When any URI of a request
+  // matches any of them, the request skips the asset cache in both
+  // directions: it is never answered from a stored asset, and its result is
+  // never stored. It always goes to the backend fetcher.
+  //
+  // This exists for container registry token endpoints. rules_oci and
+  // similar clients download an anonymous bearer token from such an endpoint
+  // and then send it on their next request. The token is a download with no
+  // checksum that expires within minutes, so a staleness window above would
+  // serve it long after it stopped working, and every manifest or blob
+  // request that carried it would fail with 401 Unauthorized. A token
+  // minted with forwarded credentials is also keyed without them, since the
+  // Authorization header is a volatile qualifier, so storing it at all would
+  // let one client's token answer another client's request.
+  //
+  // Leave empty to use the built-in list, which covers the token endpoints
+  // of quay.io (/v2/auth), Docker Hub (auth.docker.io/token), ghcr.io
+  // (/token), Forgejo and Gitea (/v2/token), GitLab (/jwt/auth), nvcr.io
+  // (/proxy_auth), docker.elastic.co, and any other registry that serves
+  // its token at a path ending in /v2/auth or /token.
+  // A non-empty list replaces the built-in one rather than extending it.
+  repeated string origin_only_uri_regexes = 6;
+
   message HttpFetcherConfiguration {
     // Formerly used to specify CAS
     reserved 1;

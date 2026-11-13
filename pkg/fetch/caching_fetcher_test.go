@@ -2,6 +2,7 @@ package fetch_test
 
 import (
 	"context"
+	"regexp"
 	"testing"
 	"time"
 
@@ -45,7 +46,7 @@ func TestFetchBlobCaching(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0, nil)
 
 	t.Run("Success", func(t *testing.T) {
 		backendGetCall := backend.EXPECT().Get(ctx, refDigest).Return(buffer.NewBufferFromError(status.Error(codes.NotFound, "Blob not found")))
@@ -103,7 +104,7 @@ func TestFetchDirectoryCaching(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0, nil)
 
 	t.Run("Success", func(t *testing.T) {
 		backendGetCall := backend.EXPECT().Get(ctx, refDigest).Return(buffer.NewBufferFromError(status.Error(codes.NotFound, "Directory not found")))
@@ -172,7 +173,7 @@ func TestCachingFetcherExpiry(t *testing.T) {
 		Code:    5,
 		Message: "Not found",
 	})
-	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore, 0)
+	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore, 0, nil)
 
 	_, err = cacheFetcher.FetchBlob(ctx, request)
 
@@ -215,7 +216,7 @@ func TestCachingFetcherOldestContentAccepted(t *testing.T) {
 		Code:    5,
 		Message: "Not found",
 	})
-	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore, 0)
+	cacheFetcher := fetch.NewCachingFetcher(baseFetcher, assetStore, 0, nil)
 
 	_, err = cacheFetcher.FetchBlob(ctx, request)
 	errAsStatus := status.Convert(err)
@@ -256,7 +257,7 @@ func TestFetchBlobVolatileQualifiersIgnored(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0, nil)
 
 	// 1st fetch is a cache miss, and we'll record the digest used.
 	var firstDigest bb_digest.Digest
@@ -360,7 +361,7 @@ func TestFetchDirectoryVolatileQualifiersIgnored(t *testing.T) {
 	backend := mock.NewMockBlobAccess(ctrl)
 	assetStore := storage.NewBlobAccessAssetStore(backend, 16*1024*1024)
 	mockFetcher := mock.NewMockFetcher(ctrl)
-	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0)
+	cachingFetcher := fetch.NewCachingFetcher(mockFetcher, assetStore, 0, nil)
 
 	// 1st fetch is a cache miss, and we'll record the digest used.
 	var firstDigest bb_digest.Digest
@@ -469,7 +470,7 @@ func TestFetchBlobMaximumStaleness(t *testing.T) {
 	t.Run("WithinWindowIsServed", func(t *testing.T) {
 		backend := mock.NewMockBlobAccess(ctrl)
 		cachingFetcher := fetch.NewCachingFetcher(
-			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour)
+			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour, nil)
 		backend.EXPECT().Get(ctx, refDigest).Return(
 			buffer.NewProtoBufferFromProto(storedAsset(10*time.Minute), buffer.UserProvided))
 
@@ -485,7 +486,7 @@ func TestFetchBlobMaximumStaleness(t *testing.T) {
 		backend := mock.NewMockBlobAccess(ctrl)
 		mockFetcher := mock.NewMockFetcher(ctrl)
 		cachingFetcher := fetch.NewCachingFetcher(
-			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour)
+			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour, nil)
 		getCall := backend.EXPECT().Get(ctx, refDigest).Return(
 			buffer.NewProtoBufferFromProto(storedAsset(48*time.Hour), buffer.UserProvided))
 		mockFetcher.EXPECT().FetchBlob(ctx, requestWithBound).Return(&remoteasset.FetchBlobResponse{
@@ -506,7 +507,7 @@ func TestFetchBlobMaximumStaleness(t *testing.T) {
 		backend := mock.NewMockBlobAccess(ctrl)
 		mockFetcher := mock.NewMockFetcher(ctrl)
 		cachingFetcher := fetch.NewCachingFetcher(
-			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 0)
+			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 0, nil)
 		getCall := backend.EXPECT().Get(ctx, refDigest).Return(
 			buffer.NewProtoBufferFromProto(storedAsset(time.Second), buffer.UserProvided))
 		mockFetcher.EXPECT().FetchBlob(ctx, requestWithBound).Return(&remoteasset.FetchBlobResponse{
@@ -527,7 +528,7 @@ func TestFetchBlobMaximumStaleness(t *testing.T) {
 	t.Run("ARequestLaxerThanTheWindowKeepsItsOwnBound", func(t *testing.T) {
 		backend := mock.NewMockBlobAccess(ctrl)
 		cachingFetcher := fetch.NewCachingFetcher(
-			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour)
+			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 24*time.Hour, nil)
 		backend.EXPECT().Get(ctx, refDigest).Return(
 			buffer.NewProtoBufferFromProto(storedAsset(48*time.Hour), buffer.UserProvided))
 
@@ -539,4 +540,152 @@ func TestFetchBlobMaximumStaleness(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, int32(codes.OK), response.Status.Code)
 	})
+}
+
+func compileDefaultOriginOnlyURIRegexes() []*regexp.Regexp {
+	compiled := make([]*regexp.Regexp, 0, len(fetch.DefaultOriginOnlyURIRegexes))
+	for _, pattern := range fetch.DefaultOriginOnlyURIRegexes {
+		compiled = append(compiled, regexp.MustCompile(pattern))
+	}
+	return compiled
+}
+
+// A registry token is a download with no checksum that expires within
+// minutes. Under a staleness window it would be served from the cache long
+// after it died, and every request that carried it would fail with 401.
+// rules_oci's quay.io token request is the case that broke in production.
+func TestFetchBlobOriginOnlyURIs(t *testing.T) {
+	ctrl, ctx := gomock.WithContext(context.Background(), t)
+
+	instanceName, err := bb_digest.NewInstanceName("")
+	require.NoError(t, err)
+	digestFunction, err := instanceName.GetDigestFunction(remoteexecution.DigestFunction_SHA256, 0)
+	require.NoError(t, err)
+
+	blobDigest := &remoteexecution.Digest{Hash: "d0d829c4c0ce64787cb1c998a9c29a109f8ed005633132fda4f29982487b04db", SizeBytes: 123}
+	bazelBound := timestamppb.New(time.Now().Add(time.Hour))
+	freshStoredAsset := &asset.Asset{
+		Digest:      blobDigest,
+		LastUpdated: timestamppb.New(time.Now().Add(-10 * time.Minute)),
+		Type:        asset.Asset_BLOB,
+	}
+
+	t.Run("TokenURIIsRefetchedAndNotStored", func(t *testing.T) {
+		// Arrange: a 72h window, and no Get or Put expected on the asset
+		// store, so gomock fails the test if the cache is touched at all.
+		backend := mock.NewMockBlobAccess(ctrl)
+		mockFetcher := mock.NewMockFetcher(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 72*time.Hour, compileDefaultOriginOnlyURIRegexes())
+		tokenURI := "https://quay.io/v2/auth?scope=repository:oauth2-proxy/oauth2-proxy:pull&service=quay.io"
+		request := &remoteasset.FetchBlobRequest{
+			Uris:                  []string{tokenURI},
+			OldestContentAccepted: bazelBound,
+		}
+		mockFetcher.EXPECT().FetchBlob(ctx, request).Return(&remoteasset.FetchBlobResponse{
+			Status:     status.New(codes.OK, "Success!").Proto(),
+			Uri:        tokenURI,
+			BlobDigest: blobDigest,
+		}, nil)
+
+		// Act
+		response, err := cachingFetcher.FetchBlob(ctx, request)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+		require.Equal(t, tokenURI, response.Uri)
+	})
+
+	t.Run("OrdinaryUnchecksummedURIIsStillServedFromCache", func(t *testing.T) {
+		// Arrange: the same window and patterns, a URI that matches none of
+		// them, and a stored asset inside the window. No fetcher call is
+		// expected.
+		backend := mock.NewMockBlobAccess(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mock.NewMockFetcher(ctrl), storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 72*time.Hour, compileDefaultOriginOnlyURIRegexes())
+		uri := "https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz"
+		_, refDigest, err := storage.ProtoSerialise(storage.NewAssetReference([]string{uri}, []*remoteasset.Qualifier{}), digestFunction)
+		require.NoError(t, err)
+		backend.EXPECT().Get(ctx, refDigest).Return(
+			buffer.NewProtoBufferFromProto(freshStoredAsset, buffer.UserProvided))
+
+		// Act
+		response, err := cachingFetcher.FetchBlob(ctx, &remoteasset.FetchBlobRequest{
+			Uris:                  []string{uri},
+			OldestContentAccepted: bazelBound,
+		})
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+		require.True(t, proto.Equal(blobDigest, response.BlobDigest))
+	})
+
+	t.Run("DirectoryRequestNamingATokenURIIsRefetched", func(t *testing.T) {
+		// Arrange: one mirror is ordinary, the other a token endpoint. One
+		// match is enough to bypass the cache.
+		backend := mock.NewMockBlobAccess(ctrl)
+		mockFetcher := mock.NewMockFetcher(ctrl)
+		cachingFetcher := fetch.NewCachingFetcher(
+			mockFetcher, storage.NewBlobAccessAssetStore(backend, 16*1024*1024), 72*time.Hour, compileDefaultOriginOnlyURIRegexes())
+		request := &remoteasset.FetchDirectoryRequest{
+			Uris:                  []string{"https://example.com/archive.tar.gz", "https://ghcr.io/token?scope=repository:org/image:pull"},
+			OldestContentAccepted: bazelBound,
+		}
+		mockFetcher.EXPECT().FetchDirectory(ctx, request).Return(&remoteasset.FetchDirectoryResponse{
+			Status:              status.New(codes.OK, "Success!").Proto(),
+			Uri:                 request.Uris[1],
+			RootDirectoryDigest: blobDigest,
+		}, nil)
+
+		// Act
+		response, err := cachingFetcher.FetchDirectory(ctx, request)
+
+		// Assert
+		require.NoError(t, err)
+		require.Equal(t, int32(codes.OK), response.Status.Code)
+	})
+}
+
+func TestDefaultOriginOnlyURIRegexes(t *testing.T) {
+	patterns := compileDefaultOriginOnlyURIRegexes()
+	matchesAny := func(uri string) bool {
+		for _, re := range patterns {
+			if re.MatchString(uri) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, uri := range []string{
+		"https://quay.io/v2/auth?scope=repository:oauth2-proxy/oauth2-proxy:pull&service=quay.io",
+		"https://auth.docker.io/token?scope=repository:library/alpine:pull&service=registry.docker.io",
+		"https://ghcr.io/token?scope=repository:org/image:pull",
+		"https://gcr.io/v2/token?scope=repository:distroless/static:pull&service=gcr.io",
+		"https://us-docker.pkg.dev/v2/token?scope=repository:p/r/i:pull",
+		"https://registry.example.com/v2/token",
+		"https://code.forgejo.org/v2/token?scope=repository:forgejo/forgejo:pull&service=container_registry",
+		"https://gitlab.com/jwt/auth?scope=repository:group/image:pull&service=container_registry",
+		"https://nvcr.io/proxy_auth?scope=repository:nvidia/cuda:pull",
+		"https://docker-auth.elastic.co/auth?scope=repository:elasticsearch/elasticsearch:pull&service=token-service",
+	} {
+		t.Run("Matches/"+uri, func(t *testing.T) {
+			require.True(t, matchesAny(uri))
+		})
+	}
+
+	for _, uri := range []string{
+		"https://quay.io/v2/oauth2-proxy/oauth2-proxy/manifests/sha256:54ac5c0000000000000000000000000000000000000000000000000000000000",
+		"https://packages.wolfi.dev/os/x86_64/APKINDEX.tar.gz",
+		"https://packages.wolfi.dev/os/wolfi-signing.rsa.pub",
+		"https://example.com/v2/authors",
+		"https://example.com/tokenizer.tar.gz",
+		"https://example.com/download?next=/token",
+	} {
+		t.Run("DoesNotMatch/"+uri, func(t *testing.T) {
+			require.False(t, matchesAny(uri))
+		})
+	}
 }
